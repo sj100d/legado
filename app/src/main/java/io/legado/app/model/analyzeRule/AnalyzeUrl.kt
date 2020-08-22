@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.text.TextUtils
 import androidx.annotation.Keep
 import io.legado.app.constant.AppConst.SCRIPT_ENGINE
+import io.legado.app.constant.AppConst.UA_NAME
+import io.legado.app.constant.AppConst.userAgent
 import io.legado.app.constant.AppPattern.EXP_PATTERN
 import io.legado.app.constant.AppPattern.JS_PATTERN
 import io.legado.app.data.entities.BaseBook
@@ -51,8 +53,8 @@ class AnalyzeUrl(
     private var queryStr: String? = null
     private val fieldMap = LinkedHashMap<String, String>()
     private var charset: String? = null
-    private var bodyTxt: String? = null
-    private var body: RequestBody? = null
+    private var body: String? = null
+    private var requestBody: RequestBody? = null
     private var method = RequestMethod.GET
 
     init {
@@ -157,15 +159,30 @@ class AnalyzeUrl(
             baseUrl = it
         }
         if (urlArray.size > 1) {
-            val options = GSON.fromJsonObject<Map<String, String>>(urlArray[1])
-            options?.let { _ ->
-                options["method"]?.let { if (it.equals("POST", true)) method = RequestMethod.POST }
-                options["headers"]?.let { headers ->
-                    GSON.fromJsonObject<Map<String, String>>(headers)?.let { headerMap.putAll(it) }
+            val option = GSON.fromJsonObject<UrlOption>(urlArray[1])
+            option?.let { _ ->
+                option.method?.let { if (it.equals("POST", true)) method = RequestMethod.POST }
+                option.headers?.let { headers ->
+                    if (headers is Map<*, *>) {
+                        @Suppress("unchecked_cast")
+                        headerMap.putAll(headers as Map<out String, String>)
+                    }
+                    if (headers is String) {
+                        GSON.fromJsonObject<Map<String, String>>(headers)
+                            ?.let { headerMap.putAll(it) }
+                    }
                 }
-                options["body"]?.let { bodyTxt = it }
-                options["charset"]?.let { charset = it }
-                options["webView"]?.let { if (it.isNotEmpty()) useWebView = true }
+                charset = option.charset
+                body = if (option.body is String) {
+                    option.body
+                } else {
+                    GSON.toJson(option.body)
+                }
+                option.webView?.let {
+                    if (it.toString().isNotEmpty()) {
+                        useWebView = true
+                    }
+                }
             }
         }
         when (method) {
@@ -179,19 +196,18 @@ class AnalyzeUrl(
                 }
             }
             RequestMethod.POST -> {
-                bodyTxt?.let {
+                body?.let {
                     if (it.isJson()) {
-                        body = RequestBody.create(jsonType, it)
+                        requestBody = RequestBody.create(jsonType, it)
                     } else {
                         analyzeFields(it)
                     }
                 } ?: let {
-                    body = FormBody.Builder().build()
+                    requestBody = FormBody.Builder().build()
                 }
             }
         }
     }
-
 
     /**
      * 解析QueryMap
@@ -253,7 +269,7 @@ class AnalyzeUrl(
                 } else {
                     HttpHelper
                         .getApiService<HttpPostApi>(baseUrl, charset)
-                        .postBody(url, body!!, headerMap)
+                        .postBody(url, requestBody!!, headerMap)
                 }
             }
             fieldMap.isEmpty() -> HttpHelper
@@ -277,7 +293,7 @@ class AnalyzeUrl(
             params.requestMethod = method
             params.javaScript = jsStr
             params.sourceRegex = sourceRegex
-            params.postData = bodyTxt?.toByteArray()
+            params.postData = body?.toByteArray()
             params.tag = tag
             return HttpHelper.ajax(params)
         }
@@ -294,7 +310,7 @@ class AnalyzeUrl(
                 } else {
                     HttpHelper
                         .getApiService<HttpPostApi>(baseUrl, charset)
-                        .postBodyAsync(url, body!!, headerMap)
+                        .postBodyAsync(url, requestBody!!, headerMap)
                 }
             }
             fieldMap.isEmpty() -> HttpHelper
@@ -306,5 +322,41 @@ class AnalyzeUrl(
         }
         return Res(NetworkUtils.getUrl(res), res.body())
     }
+
+    @Throws(Exception::class)
+    fun getImageBytes(
+        tag: String
+    ): ByteArray? {
+        //资源为本站的资源，保留cookie
+        //图片盗链的不保留当前的cookie，可由js生成图片源站的cookie
+        val cookie = CookieStore.getCookie(tag)
+        NetworkUtils.getBaseUrl(url)?.let {
+            val regex: Any
+            if(it.lastIndexOf(".") != it.indexOf(".")) {
+                regex = it.substring(it.indexOf(".")+1).toRegex()
+            } else {
+                regex = it.substring(it.lastIndexOf("/")+1).toRegex()
+            }
+            if(regex.containsMatchIn(tag)) {
+                if (cookie.isNotEmpty()) {
+                    headerMap["Cookie"] += cookie
+                }
+            }
+        }
+        headerMap[UA_NAME] = headerMap[UA_NAME] ?:userAgent
+        if(fieldMap.isEmpty()) {
+            return HttpHelper.getBytes(url, mapOf(), headerMap)
+        } else {
+            return HttpHelper.getBytes(url, fieldMap, headerMap)
+        }
+    }
+
+    data class UrlOption(
+        val method: String?,
+        val charset: String?,
+        val webView: Any?,
+        val headers: Any?,
+        val body: Any?
+    )
 
 }

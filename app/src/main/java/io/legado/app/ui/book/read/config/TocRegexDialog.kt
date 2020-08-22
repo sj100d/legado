@@ -28,6 +28,8 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.cancelButton
 import io.legado.app.lib.dialogs.customView
 import io.legado.app.lib.dialogs.okButton
+import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.ui.widget.text.AutoCompleteTextView
 import io.legado.app.utils.*
@@ -66,6 +68,7 @@ class TocRegexDialog : BaseDialogFragment(), Toolbar.OnMenuItemClickListener {
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        tool_bar.setBackgroundColor(bottomBackground)
         durRegex = arguments?.getString("tocRegex")
         tool_bar.setTitle(R.string.txt_toc_regex)
         tool_bar.inflateMenu(R.menu.txt_toc_regex)
@@ -189,7 +192,7 @@ class TocRegexDialog : BaseDialogFragment(), Toolbar.OnMenuItemClickListener {
                 rootView?.apply {
                     tocRule.name = tv_rule_name.text.toString()
                     tocRule.rule = tv_rule_regex.text.toString()
-                    viewModel.saveRule(tocRule, rule)
+                    viewModel.saveRule(tocRule)
                 }
             }
             cancelButton()
@@ -203,6 +206,7 @@ class TocRegexDialog : BaseDialogFragment(), Toolbar.OnMenuItemClickListener {
         override fun convert(holder: ItemViewHolder, item: TxtTocRule, payloads: MutableList<Any>) {
             holder.itemView.apply {
                 if (payloads.isEmpty()) {
+                    setBackgroundColor(context.backgroundColor)
                     rb_regex_name.text = item.name
                     rb_regex_name.isChecked = item.name == selectedName
                     swt_enabled.isChecked = item.enable
